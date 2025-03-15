@@ -18,4 +18,4 @@ Gyrocks is a 2,5D Game on the oscilloscope which uses many code from v.st.
 
 Carsten Wartmann, cw@blenderbuch.de
 
-Sven Killig, sven@killig.de
+ESP32 port with laser galvos and the Xbox Wireless Controller Model 1914 BLE controller: Sven Killig, sven@killig.de
