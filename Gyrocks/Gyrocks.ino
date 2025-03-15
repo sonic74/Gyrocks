@@ -1,4 +1,6 @@
 /*
+   Laser galvo/ESP32/Xbox Wireless Controller Model 1914 BLE port 2025 by sven@killig.de
+   
    Vector Game "Gyrocks" auf dem Oszilloskop
    Carsten Wartmann 2016/2017 cw@blenderbuch.de
    Fürs Make-Magazin
@@ -27,18 +29,32 @@
 */
 
 #include <SPI.h>
-#include "DMAChannel.h"
+//#include "DMAChannel.h"
+#define SLOW_SPI
 #include <math.h>
 
 #include "hershey_font.h"
 #include "objects.h"
 
-//#define CONFIG_VECTREX
-#define CONFIG_VECTORSCOPE
+#if defined(ARDUINO_M5STACK_CORE2)
+#include <M5Core2.h>
+#endif
+
+#include <XboxSeriesXControllerESP32_asukiaaa.hpp>
+
+// Required to replace with your xbox address
+// XboxSeriesXControllerESP32_asukiaaa::Core xboxController("44:16:22:5e:b2:d4");
+
+// any xbox controller
+XboxSeriesXControllerESP32_asukiaaa::Core xboxController;
+
+
+#define CONFIG_VECTREX
+//#define CONFIG_VECTORSCOPE
 
 // Sometimes the X and Y need to be flipped and/or swapped
 #undef FLIP_X
-#undef FLIP_Y
+#define FLIP_Y
 //#define SWAP_XY
 
 
@@ -82,9 +98,12 @@
    determined and might not be right for all monitors.
 */
 
+/*#define BRIGHT_SHIFT	2	// larger numbers == dimmer lines
+#define NORMAL_SHIFT	2	// but we can control with Z axis*/
 #define BRIGHT_SHIFT	2	// larger numbers == dimmer lines
-#define NORMAL_SHIFT	2	// but we can control with Z axis
-#undef OFF_JUMP			// too slow, so we can't jump the beam
+#define NORMAL_SHIFT	3	// but we can control with Z axis
+//#undef OFF_JUMP			// too slow, so we can't jump the beam
+#define OFF_JUMP		// don't wait for beam, just go!
 
 #define OFF_SHIFT	5	// smaller numbers == slower transits
 #define OFF_DWELL0	10	// time to sit beam on before starting a transit
@@ -105,13 +124,15 @@
 #error "One of CONFIG_VECTORSCOPE or CONFIG_VECTREX must be defined"
 #endif
 
-
 // Wichtige Pins wie am Teensy->DAC angeschlossen
-#define SS_PIN	10  // Chip Select 2
+#define SS_PIN	27  // Chip Select 2
+/*
 #define SS2_PIN	6   // Chip Select 1
 #define SDI	11      // 
 #define SCK	13
-
+*/
+#define PIN_NUM_LDAC GPIO_NUM_19
+#define PIN_NUM_LASER GPIO_NUM_32
 
 
 #define MAX_PTS 2000
@@ -125,6 +146,7 @@ static uint32_t points[MAX_PTS];
 #undef LINE_BRIGHT_DOUBLE
 
 
+/*
 static DMAChannel spi_dma;
 #define SPI_DMA_MAX 4096
 //#define SPI_DMA_MAX 2048 // ??
@@ -136,10 +158,13 @@ static unsigned spi_dma_cs; // which pins are we using for IO
 
 #define SPI_DMA_CS_BEAM_ON 2
 #define SPI_DMA_CS_BEAM_OFF 1
+*/
 
 // x and y position are in 12-bit range
 static uint16_t x_pos;
 static uint16_t y_pos;
+
+static int mode=0;
 
 #ifdef SWAP_XY
 #define DAC_X_CHAN 1
@@ -207,14 +232,14 @@ typedef struct
 } bullet_t;
 
 
-#define HALT  // Auskommentieren um "Handbremse" für zweiten Knopf/Schalter zu lösen (Debug&Screenshot)
+//#define HALT  // Auskommentieren um "Handbremse" für zweiten Knopf/Schalter zu lösen (Debug&Screenshot)
 
 // Joystick
-#define BUTT 14   // Digital
+/*#define BUTT 14   // Digital
 #define TRIG 15   // Digital
 #define THRU 16    // Analog
 #define POTX 17   // Analog
-#define POTY 18    // Analog
+#define POTY 18    // Analog*/
 #define DEADX 30  // Deadband X
 #define DEADY 30  // Deadband Y
 
@@ -229,11 +254,13 @@ star_t s[MAX_STARS];
 bullet_t b[MAX_BULLETS];
 
 // max. Zahl der Asteroiden/Rocks
-#define MAX_ROCK 5
+//#define MAX_ROCK 5
+#define MAX_ROCK 4
 rock_t r[MAX_ROCK];
 
 // max. Zahl der Feinde
-#define MAX_ENEMY 5
+//#define MAX_ENEMY 5
+#define MAX_ENEMY 4
 enemy_t e[MAX_ENEMY];
 
 // Infos zum Schiff/Ship speichern
@@ -293,6 +320,7 @@ int icos(int x)
 
 
 /* ************************************** DAC/vektor output stuff **************************************/
+/*
 static int
 spi_dma_tx_append(
   uint16_t value
@@ -404,7 +432,7 @@ spi_dma_setup()
   spi_dma_tx_append(0);
   spi_dma_tx();
 }
-
+*/
 
 void rx_append(int x, int y, unsigned bright)
 {
@@ -482,27 +510,13 @@ void draw_string(const char * s, int x, int y, int size)
 
 static void mpc4921_write(int channel,  uint16_t value)
 {
+//  Serial.println("mpc4921_write()");
   value &= 0x0FFF; // mask out just the 12 bits of data
-#if 1       //???
-  // select the output channel, buffered, no gain
-  value |= 0x7000 | (channel == 1 ? 0x8000 : 0x0000);
-#else
-  // select the output channel, unbuffered, no gain
-  value |= 0x3000 | (channel == 1 ? 0x8000 : 0x0000);
-#endif
-
-#ifdef SLOW_SPI
+  value |= /*0x3000 |*/ (channel == 1 ? 0b11010000<<8 : 0b01010000<<8);
+digitalWrite(SS_PIN, LOW);
   SPI.transfer((value >> 8) & 0xFF);
   SPI.transfer((value >> 0) & 0xFF);
-#else
-  if (spi_dma_tx_append(value) == 0)
-    return;
-  // wait for the previous line to finish
-  while (!spi_dma_tx_complete())
-    ;
-  // now send this line, which swaps buffers
-  spi_dma_tx();
-#endif
+digitalWrite(SS_PIN, HIGH);
 }
 
 
@@ -536,6 +550,9 @@ static void dwell(const int count)
       goto_x(x_pos);
     else
       goto_y(y_pos);
+// load the DAC
+digitalWrite(PIN_NUM_LDAC, 0);
+digitalWrite(PIN_NUM_LDAC, 1);
   }
 }
 
@@ -549,7 +566,7 @@ static inline void brightness(uint16_t bright)
   last_bright = bright;
 
   dwell(OFF_DWELL0);
-  spi_dma_cs = SPI_DMA_CS_BEAM_OFF;
+//  spi_dma_cs = SPI_DMA_CS_BEAM_OFF;
 
   // scale bright from OFF to BRIGHT
   if (bright > 64)
@@ -559,8 +576,14 @@ static inline void brightness(uint16_t bright)
   if (bright > 0)
     bright_scaled = BRIGHT_NORMAL + ((BRIGHT_BRIGHT - BRIGHT_NORMAL) * bright) / 64;
 
-  mpc4921_write(0, bright_scaled);
-  spi_dma_cs = SPI_DMA_CS_BEAM_ON;
+  //mpc4921_write(0, bright_scaled);
+//Serial.println(bright_scaled);
+bool on=bright_scaled!=BRIGHT_OFF;
+  if(mode==1) on=!on;
+  else if(mode==2) on=false;
+digitalWrite(PIN_NUM_LASER, !on);
+
+//  spi_dma_cs = SPI_DMA_CS_BEAM_ON;
 #else
   (void) bright;
 #endif
@@ -586,6 +609,9 @@ static inline void _draw_lineto(int x1, int y1, const int bright_shift)
 
   goto_x(x_pos);
   goto_y(y_pos);
+// load the DAC
+digitalWrite(PIN_NUM_LDAC, 0);
+digitalWrite(PIN_NUM_LDAC, 1);
 
   if (x0 <= x1)
   {
@@ -624,12 +650,18 @@ static inline void _draw_lineto(int x1, int y1, const int bright_shift)
       y0 += sy;
       goto_y(y_off + (y0 << bright_shift));
     }
+// load the DAC
+digitalWrite(PIN_NUM_LDAC, 0);
+digitalWrite(PIN_NUM_LDAC, 1);
 
 #ifdef LINE_BRIGHT_DOUBLE
     if (bright_shift == 0)
     {
       goto_x(x_off + (x0 << bright_shift));
       goto_y(y_off + (y0 << bright_shift));
+// load the DAC
+digitalWrite(PIN_NUM_LDAC, 0);
+digitalWrite(PIN_NUM_LDAC, 1);
     }
 #endif
   }
@@ -644,6 +676,11 @@ void draw_lineto(int x1, int y1, unsigned bright)
 {
   brightness(bright);
   _draw_lineto(x1, y1, NORMAL_SHIFT);
+/*  goto_x(x1);
+  goto_y(y1);
+// load the DAC
+digitalWrite(PIN_NUM_LDAC, 0);
+digitalWrite(PIN_NUM_LDAC, 1);*/
 }
 
 
@@ -653,6 +690,9 @@ void draw_moveto(int x1, int y1)
 #ifdef OFF_JUMP
   goto_x(x1);
   goto_y(y1);
+// load the DAC
+digitalWrite(PIN_NUM_LDAC, 0);
+digitalWrite(PIN_NUM_LDAC, 1);
 #else
   // hold the current position for a few clocks
   // with the beam off
@@ -669,22 +709,40 @@ void draw_moveto(int x1, int y1)
 /* Setup all */
 void setup()
 {
+#if defined(ARDUINO_M5STACK_CORE2)
+M5.begin(false, false, false, false, kMBusModeOutput, false);
+#endif
   pinMode(SS_PIN, OUTPUT);
-  pinMode(SS2_PIN, OUTPUT);
+/*  pinMode(SS2_PIN, OUTPUT);
   pinMode(SDI, OUTPUT);
   pinMode(SCK, OUTPUT);
 
   // Joystick
   pinMode(BUTT, INPUT);
-  pinMode(TRIG, INPUT);
+  pinMode(TRIG, INPUT);*/
+pinMode(PIN_NUM_LDAC, OUTPUT);
+pinMode(PIN_NUM_LASER, OUTPUT);
 
+  SPI.begin(18, -1, 23, SS_PIN);
+  SPI.setClockDivider(SPI_CLOCK_DIV2); //8 MHz
+//  spi_dma_setup();
 
-  SPI.begin();
-  SPI.setClockDivider(SPI_CLOCK_DIV2);
-  spi_dma_setup();
+  Serial.begin(115200); // For Debugging
+  sleep(2);
+  Serial.println("setup()");
+  Serial.print("MOSI: ");
+  Serial.println(MOSI);
+  Serial.print("MISO: ");
+  Serial.println(MISO);
+  Serial.print("SCK: ");
+  Serial.println(SCK);
+  Serial.print("SS: ");
+  Serial.println(SS);
 
-  //Serial.begin(9600); // For Debugging
   init_stars(s);
+
+
+  xboxController.begin();
 }
 
 
@@ -786,13 +844,14 @@ static void update_ship(ship_t * const ship)
   rot = atan2(2048 - ship->y, 2048 - ship->x) * 180.0 / PI - 90;  // different coord sys...?! Float... hmm
 
   // Fire
-  if (!digitalRead(TRIG) == HIGH && millis() > (ship->firedelay + FIREDELAY))
+  if (xboxController.xboxNotif.btnA && millis() > (ship->firedelay + FIREDELAY))
   {
     ship->firedelay = millis();
     ship->ax = -isin(rot) >> 1  ;
     ship->ay =  icos(rot) >> 1  ;
     add_bullet(b, ship, rot);
   }
+
   draw_object(3, ship->x, ship->y, d, rot);               // Ship
   draw_object(4, ship->x, ship->y, d + rand() % d, rot);  // Engine
 }
@@ -1036,14 +1095,17 @@ void draw_rect(int x0, int y0, int x1, int y1)
 // Anzeige Funktion
 void video()
 {
+
   // Joystick auslesen
-  if (analogRead(POTX) > 512 + DEADX || analogRead(POTX) < 512 - DEADX)
+  uint16_t POTX=(XboxControllerNotificationParser::maxJoy-xboxController.xboxNotif.joyLHori) / ((XboxControllerNotificationParser::maxJoy+1)/1024);
+  if (POTX > 512 + DEADX || POTX < 512 - DEADX)
   {
-    ship.x = ship.x - (analogRead(POTX) - 512) / 4;
+    ship.x = ship.x - (POTX - 512) / 4;
   }
-  if (analogRead(POTY) > 512 + DEADY || analogRead(POTY) < 512 - DEADY)
+  uint16_t POTY=xboxController.xboxNotif.joyLVert / ((XboxControllerNotificationParser::maxJoy+1)/1024);
+  if (POTY > 512 + DEADY || POTY < 512 - DEADY)
   {
-    ship.y = ship.y - (analogRead(POTY) - 512) / 4;
+    ship.y = ship.y - (POTY - 512) / 4;
   }
 
   ship.x = constrain(ship.x, 400, 3700);
@@ -1056,22 +1118,22 @@ void video()
   update_enemies(e);
   if (rand() % 500 == 1) add_enemy(e);
   update_ship(&ship);
-  draw_field();
+//  draw_field();
 }
-
-
 
 
 // Hauptfunktion
 void loop()
 {
+//  Serial.println("loop()");
+  xboxController.onLoop();
 
-  elapsedMicros waiting;    // Auto updating
+//  elapsedMicros waiting;    // Auto updating
 
 #undef HALT
 #ifdef HALT
   // HALTing Game (Debug&Screenshot)
-  if (!digitalRead(BUTT) == HIGH)
+  if(xboxController.xboxNotif.btnB)
   {
 #endif
 
@@ -1080,39 +1142,58 @@ void loop()
 
     video();
     // Punktezähler ausgeben
-    draw_string("Points:", 100, 150, 6);
+//    draw_string("Points:", 100, 150, 6);
     draw_string(itoa(score, buf, 10), 800, 150, 6);
-
+/*
     // FPS Todo: Debug Switch?!
     draw_string("FPS:", 3000, 150, 6);
     draw_string(itoa(fps, buf, 10), 3400, 150, 6);
-
+*/
     num_points = rx_points;
 
 #ifdef HALT
   }
 #endif
 
-  /*
+  if(xboxController.xboxNotif.btnXbox)
+  {
+#if defined(ARDUINO_M5STACK_CORE2)
+M5.shutdown();
+#endif
+  }
+  else if(xboxController.xboxNotif.btnSelect)
+  {
+    mode=0;
+  }
+  else if(xboxController.xboxNotif.btnStart)
+  {
+    mode=1;
+  }
+  else if(xboxController.xboxNotif.btnShare)
+  {
+    mode=2;
+  }
+
+
     // if there are any DMAs currently in transit, wait for them
     // to complete.
-    while (!spi_dma_tx_complete())
-      ;
+/*    while (!spi_dma_tx_complete())
+      ;*/
 
     // now start any last buffered ones and wait for those
     // to complete.
-    spi_dma_tx();
+/*    spi_dma_tx();
     while (!spi_dma_tx_complete())
-      ;
+      ;*/
 
     // flag that we have started an output frame
     //digitalWriteFast(DEBUG_PIN, 1);
 
     // force a reference voltage write on every cycle
-    spi_dma_cs = SPI_DMA_CS_BEAM_OFF;
-    mpc4921_write(1, 2048);
-    spi_dma_cs = SPI_DMA_CS_BEAM_ON;
-  */
+//    spi_dma_cs = SPI_DMA_CS_BEAM_OFF;
+//    mpc4921_write(1, 2048);
+//    spi_dma_cs = SPI_DMA_CS_BEAM_ON;
+
 
   for (unsigned n = 0 ; n < num_points ; n++)
   {
@@ -1136,13 +1217,16 @@ void loop()
   brightness(0);
   goto_x(REST_X);
   goto_y(REST_Y);
+// load the DAC
+digitalWrite(PIN_NUM_LDAC, 0);
+digitalWrite(PIN_NUM_LDAC, 1);
 
   // the USB loop above will flush eventually
   // digitalWriteFast(DEBUG_PIN, 0);
 
   //while (waiting < 10000)   //limit frame rate 100fps max
   // ;
-  fps = 1000000 / waiting;
+//  fps = 1000000 / waiting;
 
 }
 

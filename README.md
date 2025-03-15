@@ -1,9 +1,12 @@
 # Gyrocks
-A Vector Game For Oscilloscopes
+A Vector Game For ~~Oscilloscopes~~ laser galvos and the Xbox Wireless Controller Model 1914 BLE controller on ESP32
 
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/callimero/Gyrocks/master/Bilder/GyrocksTest.jpg?raw=true" width="250"/>
+</p>
+<p align="center">
+  <img src="https://raw.githubusercontent.com/sonic74/Gyrocks/master/Bilder/20250314_223123.jpg?raw=true" width="250"/>
 </p>
 
 Largely build onto Hudson Trammells teensyv/v.st project. v.st is a work from Trammell Hudson, License GPL
@@ -14,3 +17,5 @@ Modified version of https://github.com/osresearch/vst since I did never get the 
 Gyrocks is a 2,5D Game on the oscilloscope which uses many code from v.st. 
 
 Carsten Wartmann, cw@blenderbuch.de
+
+Sven Killig, sven@killig.de
