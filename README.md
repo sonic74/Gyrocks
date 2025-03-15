@@ -1,5 +1,5 @@
 # Gyrocks
-A Vector Game For ~~Oscilloscopes~~ laser galvos and the Xbox Wireless Controller Model 1914 BLE controller on ESP32
+A Vector Game For ~~Oscilloscopes~~ laser galvos
 
 
 <p align="center">
