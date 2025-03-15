@@ -508,9 +508,9 @@ void draw_string(const char * s, int x, int y, int size)
 }
 
 
-static void mpc4921_write(int channel,  uint16_t value)
+static void mpc4822_write(int channel,  uint16_t value)
 {
-//  Serial.println("mpc4921_write()");
+//  Serial.println("mpc4822_write()");
   value &= 0x0FFF; // mask out just the 12 bits of data
   value |= /*0x3000 |*/ (channel == 1 ? 0b11010000<<8 : 0b01010000<<8);
 digitalWrite(SS_PIN, LOW);
@@ -524,9 +524,9 @@ static inline void goto_x(uint16_t x)
 {
   x_pos = x;
 #ifdef FLIP_X
-  mpc4921_write(DAC_X_CHAN, 4095 - x);
+  mpc4822_write(DAC_X_CHAN, 4095 - x);
 #else
-  mpc4921_write(DAC_X_CHAN, x);
+  mpc4822_write(DAC_X_CHAN, x);
 #endif
 }
 
@@ -535,9 +535,9 @@ static inline void goto_y(uint16_t y)
 {
   y_pos = y;
 #ifdef FLIP_Y
-  mpc4921_write(DAC_Y_CHAN, 4095 - y);
+  mpc4822_write(DAC_Y_CHAN, 4095 - y);
 #else
-  mpc4921_write(DAC_Y_CHAN, y);
+  mpc4822_write(DAC_Y_CHAN, y);
 #endif
 }
 
@@ -576,7 +576,7 @@ static inline void brightness(uint16_t bright)
   if (bright > 0)
     bright_scaled = BRIGHT_NORMAL + ((BRIGHT_BRIGHT - BRIGHT_NORMAL) * bright) / 64;
 
-  //mpc4921_write(0, bright_scaled);
+  //mpc4822_write(0, bright_scaled);
 //Serial.println(bright_scaled);
 bool on=bright_scaled!=BRIGHT_OFF;
   if(mode==1) on=!on;
@@ -1191,7 +1191,7 @@ M5.shutdown();
 
     // force a reference voltage write on every cycle
 //    spi_dma_cs = SPI_DMA_CS_BEAM_OFF;
-//    mpc4921_write(1, 2048);
+//    mpc4822_write(1, 2048);
 //    spi_dma_cs = SPI_DMA_CS_BEAM_ON;
 
 
